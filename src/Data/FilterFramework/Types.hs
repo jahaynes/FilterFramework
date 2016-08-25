@@ -3,7 +3,6 @@ module Data.FilterFramework.Types where
 import Control.Monad.Trans.Resource     (ResourceT)
 import Data.ByteString                  (ByteString)
 import Data.Conduit                     (Conduit)
-import Data.Warc.WarcEntry              (WarcEntry)
 
 newtype Key = Key ByteString deriving Show
 
@@ -21,7 +20,3 @@ data FilterDocument = FilterDocument
                     , getCurrent :: Current } deriving Show
                     
 type Filter a b = Conduit a (ResourceT IO) b
-
-type FilterInput = Filter () FilterDocument
-
-type FilterOutput = Filter WarcEntry ()

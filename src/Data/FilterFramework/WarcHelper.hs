@@ -5,26 +5,48 @@ module Data.FilterFramework.WarcHelper where
 import           Control.Monad.Trans.Resource
 import           Data.Attoparsec.ByteString     -- (Result(..), parse)
 import           Data.ByteString.Char8          as C8
+import           Data.ByteString.Lazy           (toStrict)
 import           Data.Warc.Body.Body
 import           Data.Warc.Header.Header
 import           Data.Warc.Header.HeaderLine    as HL
 import           Data.Warc.Header.Key           as K   
 import           Data.Warc.Header.Value         as V  
-import           Data.Warc.WarcEntry                as W
+import           Data.Warc.WarcEntry            as W
 import           Data.Conduit
-import           Data.Conduit.Binary              (sourceFile, sinkFile)
+import           Data.Conduit.Binary              (sourceFile, sinkFile, sourceHandle, sinkHandle)
 import qualified Data.Conduit.List       as CL
 import qualified Data.Conduit.Attoparsec as CA
 import           Data.Maybe                       (mapMaybe)
 import           Data.FilterFramework.Serialisation
 import           Data.FilterFramework.Types
+import           Data.ByteString.Builder        as BB (toLazyByteString)
+import System.IO                                  (stdin, stdout)
+
+filterDocumentViaWarcViaStdIo :: (FilterDocument -> [FilterDocument]) -> IO ()
+filterDocumentViaWarcViaStdIo chain =
+    runResourceT $  sourceHandle stdin
+                 $= byteStringToWarcEntries
+                 $= CL.map warcToFiltered
+                 $= CL.concatMap chain
+                 $= CL.map filteredToWarc
+                 $= CL.map W.toByteString
+                 $$ sinkHandle stdout
+
+filterDocumentViaWarcViaStdIo2 :: Conduit FilterDocument (ResourceT IO) FilterDocument -> IO ()
+filterDocumentViaWarcViaStdIo2 chain =
+    runResourceT $  sourceHandle stdin
+                 $= byteStringToWarcEntries
+                 $= CL.map warcToFiltered
+                 $= chain
+                 $= CL.map filteredToWarc
+                 $= CL.map W.toByteString
+                 $$ sinkHandle stdout
 
 warcFileSource :: FilePath -> Source (ResourceT IO) WarcEntry 
 warcFileSource wf = sourceFile wf $= byteStringToWarcEntries
 
-    where
-    byteStringToWarcEntries :: Filter ByteString WarcEntry
-    byteStringToWarcEntries = CA.conduitParser warcEntry $= CL.map snd
+byteStringToWarcEntries :: Filter ByteString WarcEntry
+byteStringToWarcEntries = CA.conduitParser warcEntry $= CL.map snd
 
 warcToFiltered :: WarcEntry -> FilterDocument
 warcToFiltered (WarcEntry _ (CompressedBody _)) = error "not implemented"
@@ -34,8 +56,8 @@ warcToFiltered (WarcEntry (WarcHeader _ headerLines) (UncompressedBody body)) =
     where
     warcHeaderToMetaDatum :: HeaderLine -> Maybe Metadatum
     warcHeaderToMetaDatum (HeaderLine k v) = do
-        let kbs = K.toByteString k
-            vbs = V.toByteString v
+        let kbs = toStrict . BB.toLazyByteString . K.build $ k
+            vbs = toStrict . BB.toLazyByteString . V.build $ v
             bs = C8.concat [kbs, "=", vbs, "\n"]
         case parse metaParser bs of
             (Done _ m@(Metadatum _ _)) -> Just m
