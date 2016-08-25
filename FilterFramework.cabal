@@ -16,9 +16,10 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  -- exposed-modules:     
+  exposed-modules:     Data.FilterFramework.Types, Data.FilterFramework.FilterChain, Data.FilterFramework.Serialisation, Data.FilterFramework.WarcHelper
   -- other-modules:       
   -- other-extensions:    
-  build-depends:       base >=4.8 && <4.9
+  build-depends:       attoparsec, base, bytestring, conduit, conduit-extra, resourcet, WebArchive
   hs-source-dirs:      src
   default-language:    Haskell2010
+  ghc-options:	       -O3 -Wall
