@@ -3,6 +3,7 @@
 module Data.FilterFramework.WarcHelper where
 
 import           Control.Monad.Trans.Resource
+import           Control.Monad.IO.Class
 import           Data.Attoparsec.ByteString     -- (Result(..), parse)
 import           Data.ByteString.Char8          as C8
 import           Data.ByteString.Lazy           (toStrict)
@@ -22,6 +23,9 @@ import           Data.FilterFramework.Types
 import           Data.ByteString.Builder        as BB (toLazyByteString)
 import System.IO                                  (stdin, stdout)
 
+warcRecordId :: ByteString
+warcRecordId = "WARC-Record-ID"
+
 filterDocumentViaWarcViaStdIo :: (FilterDocument -> [FilterDocument]) -> IO ()
 filterDocumentViaWarcViaStdIo chain =
     runResourceT $  sourceHandle stdin
@@ -32,15 +36,20 @@ filterDocumentViaWarcViaStdIo chain =
                  $= CL.map W.toByteString
                  $$ sinkHandle stdout
 
-filterDocumentViaWarcViaStdIo2 :: Conduit FilterDocument (ResourceT IO) FilterDocument -> IO ()
-filterDocumentViaWarcViaStdIo2 chain =
-    runResourceT $  sourceHandle stdin
-                 $= byteStringToWarcEntries
-                 $= CL.map warcToFiltered
-                 $= chain
-                 $= CL.map filteredToWarc
-                 $= CL.map W.toByteString
-                 $$ sinkHandle stdout
+filterManyMany :: ([FilterDocument] -> IO [FilterDocument]) -> IO ()
+filterManyMany chain = runResourceT $ do
+
+    mid <- sourceHandle stdin
+        $= byteStringToWarcEntries
+        $= CL.map warcToFiltered
+        $$ CL.consume
+
+    out <- liftIO (chain mid)
+
+    CL.sourceList out
+        $= CL.map filteredToWarc
+        $= CL.map W.toByteString
+        $$ sinkHandle stdout
 
 warcFileSource :: FilePath -> Source (ResourceT IO) WarcEntry 
 warcFileSource wf = sourceFile wf $= byteStringToWarcEntries
